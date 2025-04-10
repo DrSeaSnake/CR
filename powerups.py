@@ -17,6 +17,8 @@ class PowerUpSystem:
         self.buttons = []
         self.font = pygame.font.SysFont("Arial", 18)
         self.title_font = pygame.font.SysFont("Arial", 24, bold=True)
+        self.removed_piece_message = None
+        self.removed_piece_timer = 0
         
         # Create buttons for each powerup
         button_width = 200
@@ -66,58 +68,76 @@ class PowerUpSystem:
                 self.selected_powerup = button["powerup"]
                 self.active_powerups.add(button["powerup"])
                 self.show_powerup_selection = False
-                self.apply_powerup(button["powerup"])
                 return True
         
         return False
     
-    def apply_powerup(self, powerup):
-        """Apply the selected powerup effect"""
-        # Most powerups just need to be tracked in active_powerups
-        # For the random piece removal, we'll handle it in the board class
-        pass
+    def set_removed_piece_message(self, piece):
+        """Set a message about which piece was removed"""
+        if piece:
+            color = "White" if piece.color.name == "WHITE" else "Black"
+            piece_type = piece.piece_type.name.capitalize()
+            self.removed_piece_message = f"Removed a {color} {piece_type}!"
+            self.removed_piece_timer = 180  # Display for about 3 seconds at 60 FPS
+    
+    def update(self):
+        """Update timers and states"""
+        if self.removed_piece_timer > 0:
+            self.removed_piece_timer -= 1
+            if self.removed_piece_timer <= 0:
+                self.removed_piece_message = None
     
     def draw(self, screen):
         """Draw the powerup selection UI if active"""
-        if not self.show_powerup_selection:
-            return
-        
-        # Draw semi-transparent overlay
-        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 180))  # Semi-transparent black
-        screen.blit(overlay, (0, 0))
-        
-        # Draw title
-        title = self.title_font.render("Select a Power-Up!", True, WHITE)
-        title_rect = title.get_rect(center=(WIDTH // 2, HEIGHT // 3))
-        screen.blit(title, title_rect)
-        
-        # Draw buttons
-        for button in self.buttons:
-            pygame.draw.rect(screen, button["color"], button["rect"], border_radius=10)
-            pygame.draw.rect(screen, WHITE, button["rect"], 2, border_radius=10)  # Border
+        if self.show_powerup_selection:
+            # Draw semi-transparent overlay
+            overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 180))  # Semi-transparent black
+            screen.blit(overlay, (0, 0))
             
-            # Wrap text to fit in button
-            words = button["text"].split()
-            lines = []
-            current_line = []
+            # Draw title
+            title = self.title_font.render("Select a Power-Up!", True, WHITE)
+            title_rect = title.get_rect(center=(WIDTH // 2, HEIGHT // 3))
+            screen.blit(title, title_rect)
             
-            for word in words:
-                test_line = ' '.join(current_line + [word])
-                test_width = self.font.size(test_line)[0]
+            # Draw buttons
+            for button in self.buttons:
+                pygame.draw.rect(screen, button["color"], button["rect"], border_radius=10)
+                pygame.draw.rect(screen, WHITE, button["rect"], 2, border_radius=10)  # Border
                 
-                if test_width < button["rect"].width - 20:
-                    current_line.append(word)
-                else:
+                # Wrap text to fit in button
+                words = button["text"].split()
+                lines = []
+                current_line = []
+                
+                for word in words:
+                    test_line = ' '.join(current_line + [word])
+                    test_width = self.font.size(test_line)[0]
+                    
+                    if test_width < button["rect"].width - 20:
+                        current_line.append(word)
+                    else:
+                        lines.append(' '.join(current_line))
+                        current_line = [word]
+                
+                if current_line:
                     lines.append(' '.join(current_line))
-                    current_line = [word]
-            
-            if current_line:
-                lines.append(' '.join(current_line))
-            
-            # Draw the text
-            y_offset = button["rect"].centery - ((len(lines) * self.font.get_height()) // 2)
-            for i, line in enumerate(lines):
-                text = self.font.render(line, True, BLACK)
-                text_rect = text.get_rect(center=(button["rect"].centerx, y_offset + i * self.font.get_height()))
-                screen.blit(text, text_rect)
+                
+                # Draw the text
+                y_offset = button["rect"].centery - ((len(lines) * self.font.get_height()) // 2)
+                for i, line in enumerate(lines):
+                    text = self.font.render(line, True, BLACK)
+                    text_rect = text.get_rect(center=(button["rect"].centerx, y_offset + i * self.font.get_height()))
+                    screen.blit(text, text_rect)
+        
+        # Draw removed piece message if active
+        if self.removed_piece_message:
+            msg_surface = self.title_font.render(self.removed_piece_message, True, (255, 50, 50))
+            msg_rect = msg_surface.get_rect(center=(WIDTH // 2, 40))
+            # Add a background for better visibility
+            bg_rect = msg_rect.inflate(20, 10)
+            bg_surface = pygame.Surface((bg_rect.width, bg_rect.height))
+            bg_surface.fill((0, 0, 0))
+            bg_surface.set_alpha(180)
+            screen.blit(bg_surface, bg_rect)
+            screen.blit(msg_surface, msg_rect)

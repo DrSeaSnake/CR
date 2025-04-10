@@ -46,8 +46,8 @@ def main():
                 text = "Active: Knights move further"
                 color = (100, 180, 240)
             elif powerup == PowerUpType.RANDOM_PIECE_REMOVAL:
-                text = "Active: Random piece removed"
-                color = (240, 100, 100)
+                # This one doesn't need a persistent indicator since it's one-time use
+                continue
             else:
                 continue
                 

@@ -519,23 +519,28 @@ class ChessBoard:
         # Track white's moves and activate powerup selection if needed
         if self.current_turn == Color.WHITE:
             self.powerup_system.increment_move_counter()
-            
-            # Apply the random piece removal powerup if selected
-            if (PowerUpType.RANDOM_PIECE_REMOVAL in self.powerup_system.active_powerups and
-                PowerUpType.RANDOM_PIECE_REMOVAL == self.powerup_system.selected_powerup):
-                removed_piece = self.remove_random_piece()
-                self.powerup_system.selected_powerup = None  # Reset after use
         
         # Switch turns
         self.current_turn = Color.BLACK if self.current_turn == Color.WHITE else Color.WHITE
         self.selected_piece = None
         self.valid_moves = []
         
+        # Check if we need to apply the random piece removal powerup
+        # This needs to happen after the turn switch so the notification appears at the right time
+        if PowerUpType.RANDOM_PIECE_REMOVAL == self.powerup_system.selected_powerup:
+            removed_piece = self.remove_random_piece()
+            self.powerup_system.set_removed_piece_message(removed_piece)
+            self.powerup_system.selected_powerup = None  # Reset after use
+        
         return True
 
     def handle_click(self, mouse_pos):
-        # First check if we're selecting a powerup
         if self.powerup_system.handle_click(mouse_pos):
+            # If we're selecting the random piece removal powerup, apply it immediately
+            if PowerUpType.RANDOM_PIECE_REMOVAL == self.powerup_system.selected_powerup:
+                removed_piece = self.remove_random_piece()
+                self.powerup_system.set_removed_piece_message(removed_piece)
+                self.powerup_system.selected_powerup = None  # Reset after use
             return  # Click was handled by the powerup system
         
         # Convert mouse position to board coordinates
@@ -591,5 +596,6 @@ class ChessBoard:
                     if image_key in piece_images:
                         screen.blit(piece_images[image_key], (col * SQUARE_SIZE, row * SQUARE_SIZE))
         
-        # Draw powerup selection if active
+        # Update and draw powerup system
+        self.powerup_system.update()
         self.powerup_system.draw(screen)
