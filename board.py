@@ -1,6 +1,8 @@
 import pygame
 from constants import *
 from pieces import Piece, PieceType, Color
+from powerups import PowerUpSystem, PowerUpType
+import random
 
 class ChessBoard:
     def __init__(self):
@@ -10,6 +12,7 @@ class ChessBoard:
         self.current_turn = Color.WHITE
         self.last_move = None
         self.en_passant_target = None
+        self.powerup_system = PowerUpSystem()  # Initialize the powerup system
 
     def reset_board(self):
         self.board = [[None for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)]
@@ -85,15 +88,26 @@ class ChessBoard:
         
         # Forward move (one square)
         new_row = row + direction
-        if self.is_valid_position(new_row, col) and self.board[new_row][col] is None:
-            moves.append((new_row, col))
+        if self.is_valid_position(new_row, col):
+            # Check if forward capture is allowed for White pawns with the powerup
+            forward_capture_allowed = (
+                piece.color == Color.WHITE and 
+                PowerUpType.PAWN_FORWARD_CAPTURE in self.powerup_system.active_powerups and
+                self.board[new_row][col] is not None and 
+                self.board[new_row][col].color != piece.color
+            )
             
-            # Double move from starting position
-            start_row = 6 if piece.color == Color.WHITE else 1
-            if row == start_row:
-                new_row = row + 2 * direction
-                if self.is_valid_position(new_row, col) and self.board[new_row][col] is None:
-                    moves.append((new_row, col))
+            # Normal forward move (if square is empty) or forward capture (if powerup is active)
+            if self.board[new_row][col] is None or forward_capture_allowed:
+                moves.append((new_row, col))
+                
+                # Double move from starting position (only if the next square is empty)
+                if self.board[new_row][col] is None:  # Can't do double move if capturing
+                    start_row = 6 if piece.color == Color.WHITE else 1
+                    if row == start_row:
+                        new_row = row + 2 * direction
+                        if self.is_valid_position(new_row, col) and self.board[new_row][col] is None:
+                            moves.append((new_row, col))
         
         # Captures (diagonally)
         for col_offset in [-1, 1]:
@@ -115,11 +129,23 @@ class ChessBoard:
         moves = []
         row, col = piece.position
         
-        # All possible knight moves
-        offsets = [
+        # Standard knight moves
+        standard_offsets = [
             (-2, -1), (-2, 1), (-1, -2), (-1, 2),
             (1, -2), (1, 2), (2, -1), (2, 1)
         ]
+        
+        # Extended moves if the powerup is active and it's a white knight
+        extended_offsets = [
+            (-3, -1), (-3, 1), (-1, -3), (-1, 3),
+            (1, -3), (1, 3), (3, -1), (3, 1)
+        ]
+        
+        # Use both standard and extended moves if the powerup is active for white knights
+        offsets = standard_offsets
+        if (piece.color == Color.WHITE and 
+            PowerUpType.KNIGHT_EXTENDED_RANGE in self.powerup_system.active_powerups):
+            offsets = standard_offsets + extended_offsets
         
         for r_offset, c_offset in offsets:
             new_row, new_col = row + r_offset, col + c_offset
@@ -401,6 +427,25 @@ class ChessBoard:
         
         return in_check
 
+    def remove_random_piece(self):
+        # Create a list of all removable pieces (excluding kings)
+        removable_pieces = []
+        
+        for row in range(BOARD_SIZE):
+            for col in range(BOARD_SIZE):
+                piece = self.board[row][col]
+                if piece is not None and piece.piece_type != PieceType.KING:
+                    removable_pieces.append((row, col, piece))
+        
+        if removable_pieces:
+            # Choose a random piece to remove
+            row, col, _ = random.choice(removable_pieces)
+            removed_piece = self.board[row][col]
+            self.board[row][col] = None
+            return removed_piece
+        
+        return None
+
     def move_piece(self, piece, target_pos):
         if not piece or target_pos not in self.valid_moves:
             return False
@@ -470,6 +515,18 @@ class ChessBoard:
         
         # Update game state
         self.last_move = (piece, (row, col), target_pos)
+        
+        # Track white's moves and activate powerup selection if needed
+        if self.current_turn == Color.WHITE:
+            self.powerup_system.increment_move_counter()
+            
+            # Apply the random piece removal powerup if selected
+            if (PowerUpType.RANDOM_PIECE_REMOVAL in self.powerup_system.active_powerups and
+                PowerUpType.RANDOM_PIECE_REMOVAL == self.powerup_system.selected_powerup):
+                removed_piece = self.remove_random_piece()
+                self.powerup_system.selected_powerup = None  # Reset after use
+        
+        # Switch turns
         self.current_turn = Color.BLACK if self.current_turn == Color.WHITE else Color.WHITE
         self.selected_piece = None
         self.valid_moves = []
@@ -477,6 +534,10 @@ class ChessBoard:
         return True
 
     def handle_click(self, mouse_pos):
+        # First check if we're selecting a powerup
+        if self.powerup_system.handle_click(mouse_pos):
+            return  # Click was handled by the powerup system
+        
         # Convert mouse position to board coordinates
         col = mouse_pos[0] // SQUARE_SIZE
         row = mouse_pos[1] // SQUARE_SIZE
@@ -529,3 +590,6 @@ class ChessBoard:
                     image_key = piece.get_image_key()
                     if image_key in piece_images:
                         screen.blit(piece_images[image_key], (col * SQUARE_SIZE, row * SQUARE_SIZE))
+        
+        # Draw powerup selection if active
+        self.powerup_system.draw(screen)
