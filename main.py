@@ -69,8 +69,20 @@ def main():
                     logger.info("Game reset")
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:  # Left mouse button
-                    # Only allow player to move white pieces
-                    if chess_board.current_turn == Color.WHITE:
+                    # First check if this is a powerup selection click
+                    if chess_board.powerup_system.show_powerup_selection:
+                        logger.info(f"Detected click during powerup selection at {event.pos}")
+                        if chess_board.powerup_system.handle_click(event.pos):
+                            logger.info("Powerup selected")
+                            # If random piece removal was selected, apply it immediately
+                            if chess_board.powerup_system.selected_powerup == PowerUpType.RANDOM_PIECE_REMOVAL:
+                                removed_piece = chess_board.remove_random_piece()
+                                chess_board.powerup_system.set_removed_piece_message(removed_piece)
+                                chess_board.powerup_system.selected_powerup = None
+                            continue  # Skip the rest of the click handling
+                    
+                    # Only allow player to move white pieces when it's their turn and no powerup selection is active
+                    elif chess_board.current_turn == Color.WHITE and not chess_board.powerup_system.show_powerup_selection:
                         chess_board.handle_click(event.pos)
                         
                         # Check if a move was made
@@ -104,6 +116,9 @@ def main():
                     row, col = piece.position
                     target_row, target_col = target_pos
                     
+                    # Store captured piece
+                    captured_piece = chess_board.board[target_row][target_col]
+                    
                     # Clear the old position
                     chess_board.board[row][col] = None
                     
@@ -111,6 +126,14 @@ def main():
                     piece.position = target_pos
                     piece.has_moved = True
                     chess_board.board[target_row][target_col] = piece
+                    
+                    # Update game state
+                    chess_board.last_move = (piece, (row, col), target_pos)
+                    
+                    # Check for powerup activation - increment white's move counter
+                    # This is needed for proper powerup handling
+                    if chess_board.current_turn == Color.WHITE:
+                        chess_board.powerup_system.increment_move_counter()
                     
                     # Switch turns
                     chess_board.current_turn = Color.WHITE
@@ -136,6 +159,9 @@ def main():
                         piece.position = random_move
                         piece.has_moved = True
                         chess_board.board[target_row][target_col] = piece
+                        
+                        # Update game state
+                        chess_board.last_move = (piece, (row, col), random_move)
                         
                         chess_board.current_turn = Color.WHITE
                         chess_board.selected_piece = None

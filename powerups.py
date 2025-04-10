@@ -63,13 +63,20 @@ class PowerUpSystem:
         if not self.show_powerup_selection:
             return False
         
-        for button in self.buttons:
+        # Debug information
+        print(f"Powerup click detected at position: {pos}")
+        
+        for i, button in enumerate(self.buttons):
+            print(f"Button {i}: Rect={button['rect']}, Contains click={button['rect'].collidepoint(pos)}")
             if button["rect"].collidepoint(pos):
+                print(f"Selected powerup: {button['powerup']}")
                 self.selected_powerup = button["powerup"]
                 self.active_powerups.add(button["powerup"])
                 self.show_powerup_selection = False
                 return True
         
+        # If we get here, the click wasn't on any button
+        print("Click wasn't on any powerup button")
         return False
     
     def set_removed_piece_message(self, piece):
