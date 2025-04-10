@@ -1,4 +1,4 @@
-# Constants for the chess game
+# Constants
 
 # Board dimensions
 BOARD_SIZE = 8
