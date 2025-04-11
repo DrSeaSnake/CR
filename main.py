@@ -6,7 +6,7 @@ import random
 from constants import *
 from board import ChessBoard
 from utils import load_piece_images
-from powerups import PowerUpType
+from powerups import PowerUpType, PoisonCloud
 from pieces import Color, PieceType, Piece
 
 # Set up logging
@@ -150,6 +150,10 @@ def main():
                     toggle_ai()
                 elif event.key == pygame.K_r:
                     reset_game()
+                elif event.key == pygame.K_ESCAPE:
+                    # Cancel poisoned pawn selection with Escape key
+                    if chess_board.powerup_system.selecting_pawn_for_poison:
+                        chess_board.powerup_system.cancel_pawn_selection()
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 # Check if buttons were clicked
                 button_clicked = False
@@ -160,6 +164,11 @@ def main():
                 
                 if button_clicked:
                     continue
+                
+                # Check for consumable buttons
+                if event.button == 1 and mouse_pos[0] > WIDTH:  # If clicking in sidebar
+                    if chess_board.powerup_system.handle_consumable_click(mouse_pos):
+                        continue  # Consumable was activated
                 
                 if event.button == 1:  # Left mouse button
                     # Adjust click position if it's in the board area
@@ -175,16 +184,52 @@ def main():
                                     removed_piece = chess_board.remove_random_piece()
                                     chess_board.powerup_system.set_removed_piece_message(removed_piece)
                                     chess_board.powerup_system.selected_powerup = None
+                                continue
+                        
+                        # Handle selecting a pawn for poison
+                        if chess_board.powerup_system.selecting_pawn_for_poison:
+                            col = board_click[0] // SQUARE_SIZE
+                            row = board_click[1] // SQUARE_SIZE
+                            
+                            if 0 <= row < 8 and 0 <= col < 8:
+                                piece = chess_board.board[row][col]
+                                if piece and piece.piece_type == PieceType.PAWN and piece.color == Color.WHITE:
+                                    chess_board.powerup_system.select_pawn_for_poison(piece)
+                                else:
+                                    chess_board.powerup_system.set_status_message("Select a white pawn")
+                            continue
                         
                         # Only allow player to move white pieces when it's their turn and no powerup selection is active
                         elif chess_board.current_turn == Color.WHITE and not chess_board.powerup_system.show_powerup_selection:
                             old_turn = chess_board.current_turn
+                            
+                            # Store the board state before the move to check for captures
+                            old_board = [[chess_board.board[r][c] for c in range(8)] for r in range(8)]
+                            
+                            # Handle the move
                             chess_board.handle_click(board_click)
                             
                             # Check if a move was made
                             if chess_board.current_turn != old_turn:
                                 # A move was made, increment total moves
                                 total_moves += 1
+                                
+                                # Check if a piece was captured
+                                if chess_board.last_move:
+                                    _, from_pos, to_pos = chess_board.last_move
+                                    target_row, target_col = to_pos
+                                    
+                                    # Check if this was a capture
+                                    if old_board[target_row][target_col] is not None:
+                                        captured_piece = old_board[target_row][target_col]
+                                        # Check if it was a poisoned pawn
+                                        for pawn in chess_board.powerup_system.poisoned_pawns[:]:  # Create a copy to safely modify
+                                            if pawn == captured_piece:
+                                                logger.info(f"Poisoned pawn captured at {to_pos}")
+                                                # Create a poison cloud with the current turn count
+                                                chess_board.powerup_system.create_poison_cloud(to_pos, total_moves)
+                                                chess_board.powerup_system.poisoned_pawns.remove(pawn)
+                                
                                 # Clear error messages
                                 ai_error_message = None
         
@@ -192,6 +237,7 @@ def main():
         if (ai_enabled and ai is not None and 
             chess_board.current_turn == Color.BLACK and 
             not chess_board.powerup_system.show_powerup_selection and
+            not chess_board.powerup_system.selecting_pawn_for_poison and
             current_time - last_ai_move_time >= ai_move_delay):
             
             try:
@@ -207,6 +253,9 @@ def main():
                 logger.info(f"Valid moves for {piece.piece_type.name}: {valid_moves}")
                 
                 if target_pos in valid_moves:
+                    # Store the board state before the move to check for captures
+                    old_board = [[chess_board.board[r][c] for c in range(8)] for r in range(8)]
+                    
                     # DIRECT APPROACH: Instead of relying on move_piece, manually update the board
                     logger.info(f"Making move: {piece.piece_type.name} to {target_pos}")
                     
@@ -214,7 +263,7 @@ def main():
                     row, col = piece.position
                     target_row, target_col = target_pos
                     
-                    # Store captured piece
+                    # Store captured piece information for poison cloud creation
                     captured_piece = chess_board.board[target_row][target_col]
                     
                     # Clear the old position
@@ -227,6 +276,15 @@ def main():
                     
                     # Update game state
                     chess_board.last_move = (piece, (row, col), target_pos)
+                    
+                    # Check if a poisoned pawn was captured
+                    if captured_piece is not None:
+                        for pawn in chess_board.powerup_system.poisoned_pawns[:]:  # Create a copy to safely modify
+                            if pawn == captured_piece:
+                                logger.info(f"Poisoned pawn captured at {target_pos}")
+                                # Create a poison cloud with the current turn count
+                                chess_board.powerup_system.create_poison_cloud(target_pos, total_moves)
+                                chess_board.powerup_system.poisoned_pawns.remove(pawn)
                     
                     # Increment total moves
                     total_moves += 1
@@ -256,6 +314,9 @@ def main():
                         row, col = piece.position
                         target_row, target_col = random_move
                         
+                        # Store captured piece information for poison cloud creation
+                        captured_piece = chess_board.board[target_row][target_col]
+                        
                         chess_board.board[row][col] = None
                         piece.position = random_move
                         piece.has_moved = True
@@ -263,6 +324,15 @@ def main():
                         
                         # Update game state
                         chess_board.last_move = (piece, (row, col), random_move)
+                        
+                        # Check if a poisoned pawn was captured
+                        if captured_piece is not None:
+                            for pawn in chess_board.powerup_system.poisoned_pawns[:]:  # Create a copy to safely modify
+                                if pawn == captured_piece:
+                                    logger.info(f"Poisoned pawn captured at {random_move}")
+                                    # Create a poison cloud with the current turn count
+                                    chess_board.powerup_system.create_poison_cloud(random_move, total_moves)
+                                    chess_board.powerup_system.poisoned_pawns.remove(pawn)
                         
                         # Increment total moves
                         total_moves += 1
@@ -278,11 +348,26 @@ def main():
                 logger.error(f"AI error: {e}")
                 ai_enabled = False
         
+        # Process poison cloud effects - before drawing
+        if chess_board.powerup_system.poison_clouds:
+            # Update poison clouds and get list of killed pieces
+            killed_pieces = chess_board.powerup_system.update_poison_clouds(total_moves, chess_board)
+            
+            # Show message if pieces were killed
+            if killed_pieces:
+                message = "Poison killed: " + ", ".join(killed_pieces)
+                chess_board.powerup_system.set_status_message(message)
+                logger.info(message)
+        
         # Clear the screen
         screen.fill(BLACK)
         
         # Draw the chess board
         chess_board.draw(screen, piece_images)
+        
+        # Draw poison clouds and poisoned pawns
+        chess_board.powerup_system.draw_poison_clouds(screen)
+        chess_board.powerup_system.draw_poisoned_pawns(screen)
         
         # Draw the sidebar
         pygame.draw.rect(screen, SIDEBAR_BACKGROUND, (WIDTH, 0, SIDEBAR_WIDTH, HEIGHT))
@@ -302,8 +387,8 @@ def main():
         screen.blit(total_moves_text, (WIDTH + 10, 100))
         
         # Calculate moves until next powerup
-        moves_until_powerup = 3 - (chess_board.powerup_system.white_moves_count % 3)
-        if moves_until_powerup == 3:
+        moves_until_powerup = 5 - (chess_board.powerup_system.white_moves_count % 5)
+        if moves_until_powerup == 5:
             moves_until_powerup = 0
             
         powerup_text = regular_font.render(f"Next Powerup in: {moves_until_powerup}", True, SIDEBAR_TEXT)
@@ -345,6 +430,10 @@ def main():
             no_powerups_text = small_font.render("No active powerups", True, (150, 150, 150))
             screen.blit(no_powerups_text, (WIDTH + 10, y_offset))
         
+        # Draw consumables section
+        pygame.draw.line(screen, SIDEBAR_DIVIDER, (WIDTH, 280), (TOTAL_WIDTH, 280), 2)
+        chess_board.powerup_system.draw_consumables(screen, WIDTH + 10, sidebar_width)
+        
         # Draw divider before controls
         pygame.draw.line(screen, SIDEBAR_DIVIDER, (WIDTH, HEIGHT - 150), (TOTAL_WIDTH, HEIGHT - 150), 2)
         
@@ -382,6 +471,21 @@ def main():
             bg_surface.set_alpha(180)
             screen.blit(bg_surface, bg_rect)
             screen.blit(msg_surface, msg_rect)
+        
+        # Draw status message if active
+        if chess_board.powerup_system.status_message:
+            msg_surface = regular_font.render(chess_board.powerup_system.status_message, True, (220, 220, 100))
+            msg_rect = msg_surface.get_rect(center=(WIDTH // 2, 70))
+            # Add a background for better visibility
+            bg_rect = msg_rect.inflate(20, 10)
+            bg_surface = pygame.Surface((bg_rect.width, bg_rect.height))
+            bg_surface.fill((0, 0, 0))
+            bg_surface.set_alpha(180)
+            screen.blit(bg_surface, bg_rect)
+            screen.blit(msg_surface, msg_rect)
+        
+        # Update powerup system timers
+        chess_board.powerup_system.update()
         
         pygame.display.flip()
         clock.tick(FPS)

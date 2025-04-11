@@ -1,6 +1,5 @@
 # Constants
 
-# Board dimensions
 BOARD_SIZE = 8
 SQUARE_SIZE = 80
 WIDTH = HEIGHT = BOARD_SIZE * SQUARE_SIZE

@@ -428,6 +428,12 @@ class ChessBoard:
         return in_check
 
     def remove_random_piece(self):
+        """
+        Remove a random piece from the board (excluding kings).
+        Returns the removed piece.
+        """
+        import random
+        
         # Create a list of all removable pieces (excluding kings)
         removable_pieces = []
         
@@ -439,8 +445,7 @@ class ChessBoard:
         
         if removable_pieces:
             # Choose a random piece to remove
-            row, col, _ = random.choice(removable_pieces)
-            removed_piece = self.board[row][col]
+            row, col, removed_piece = random.choice(removable_pieces)
             self.board[row][col] = None
             return removed_piece
         
